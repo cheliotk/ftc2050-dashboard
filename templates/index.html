@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Dashboard</title>
+  <link rel="stylesheet" href="./static/lib/css//bootstrap.min.css">
+  <link rel="stylesheet" href="./static/lib/css/keen-dashboards.css">
+  <link rel="stylesheet" href="./static/lib/css/dc.min.css">
+
+  <link rel="stylesheet" href="./static/lib/css/leaflet.css">
+  <link rel="stylesheet" href="./static/lib/css/leaflet.draw.css">
+  <meta charset="UTF8">
+
+  <style type="text/css">
+    #mapid { height: 503px; }
+
+    /* loader icon css */
+    .loader {
+      /*border: 8px solid #f3f3f3; /* Light grey */
+      border: 8px solid #3E4A56; /* Light grey */
+      border-top: 8px solid #3498db; /* Blue */
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      display: inline-block;
+      animation: spin 2s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .legend{
+      border: 1px solid black;
+      background: linear-gradient(90deg, rgba(255,255,255,0) 10%, rgba(255,255,0,1) 40%, rgba(255,127,0,1) 70%, rgba(255,0,0,1) 100%);
+    }
+
+    /* load button style */
+    .button {
+      background-color: #595959; /* gray */
+      border: none;
+      color: white;
+      /*padding: 0px 40px;*/
+      /*width: 200px;*/
+      width:50%;
+      height: 40px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 20px;
+    }
+
+    .rowLoader::after {
+      content: "";
+      clear: both;
+      display: table;
+    }
+
+    .columnLoader {
+      float: left;
+      /*width: 33.33%;*/
+      padding: 5px;
+    }
+  </style>
+</head>
+<body class="application">
+
+  <div class="navbar navbar-inverse navbar-fixed-top" role="navigation">
+    <div class="container-fluid">
+      <div class="navbar-header">
+        <a class="navbar-brand" href="./">Freight Dashboard</a>
+      </div>
+
+        <form action="" onsubmit="return false;" method="post">
+            <div class="navbar-header">
+              <div class="tool">
+                <button id="currentTimeElement" onclick="advanceTime()" class="btn btn-primary btn-block">TIME</button>
+              </div>
+            </div>
+
+            <div class='columnLoader'>
+              <div class="loader"></div>
+            </div>
+        </form>
+    </div>
+  </div>
+
+  <div class="container-fluid">
+
+    <div class="row">
+
+      <div class="col-sm-6">
+        <div class="row">
+
+          <!-- Time Chart --> 
+          <div class="col-sm-12">
+            <div class="chart-wrapper">
+              <div class="chart-title">
+                Journey Start Time
+              </div>
+              <div class="chart-stage">
+                <div id="time-chart"></div>
+              </div>
+            </div>
+          </div>
+          <!-- Time Chart --> 
+
+          <!-- End Time Chart --> 
+          <div class="col-sm-12">
+            <div class="chart-wrapper">
+              <div class="chart-title">
+                Journey End Time
+              </div>
+              <div class="chart-stage">
+                <div id="time-chart-end"></div>
+              </div>
+            </div>
+          </div>
+          <!-- End Time Chart --> 
+
+          <!-- Journey Length Chart -->
+          <div class="col-sm-4">
+            <div class="chart-wrapper">
+              <div class="chart-title">
+                Journey Length
+              </div>
+              <div class="chart-stage">
+                <div id="resource-type-row-chart"></div>
+              </div>
+            </div>
+          </div>
+          <!-- Journey Length Chart -->
+
+          <!-- Origin-Destination Chart -->
+          <div class="col-sm-4">
+            <div class="chart-wrapper">
+              <div class="chart-title">
+                Origin-Destination
+              </div>
+              <div class="chart-stage">
+                <div id="od-row-chart"></div>
+              </div>
+            </div>
+          </div>
+          <!-- Origin-Destination Chart -->
+
+          <!-- Stem Chart -->
+          <div class="col-sm-4">
+            <div class="chart-wrapper">
+              <div class="chart-title">
+                Stem
+              </div>
+              <div class="chart-stage">
+                <div id="stem-row-chart"></div>
+              </div>
+            </div>
+          </div>
+          <!-- Stem Chart Chart -->
+
+        </div>
+      </div>
+
+      <!-- Map -->  
+      <div class="col-sm-6">
+        <div class="chart-wrapper">
+          <div class="chart-title">
+            Journey Map
+          </div>
+          <div class="chart-title">
+            <div class="row">
+              <div class="col-sm-4">
+                <button id="updateMap" onclick="updateDataset(doUpdate=true)" class="btn btn-primary btn-block">Update Map</button>
+              </div>
+              <div class="col-sm-6">
+                <div class="card">
+                  <div class="row legend">
+                    <p id="legendText-0" class="col-sm-4" align="left" style="color:#000000;  font-size:11px">0</p>
+                    <p id="legendText-half" class="col-sm-4" align="center" style="color:#000000;  font-size:11px">half</p>
+                    <p id="legendText-full" class="col-sm-4" align="right" style="color:#000000;  font-size:11px">full</p>
+                  </div>
+                </div>
+              </div>
+              <p id="legendText" class="col-sm-2" align="left" style="color:#000000; font-size:11px;">points per r radius</p>
+            </div>
+          </div>
+
+          <div class="chart-stage">
+            <div id="mapid"></div>
+          </div>
+        </div>
+      </div>
+      <!-- Map -->
+
+      <!-- Filtered Journeys Readout -->
+      <div class="col-sm-3">
+        <div class="chart-wrapper">
+          <div class="chart-title">
+            Filtered Journeys
+          </div>
+          <div class="chart-stage">
+            <div id="filtered-journeys-nd"></div>
+          </div>
+        </div>
+      </div>
+      <!-- Filtered Journeys Readout -->
+
+      <!-- Total Journeys Readout -->
+      <div class="col-sm-3">
+        <div class="chart-wrapper">
+          <div class="chart-title">
+            Total Journeys
+          </div>
+          <div class="chart-stage">
+            <div id="total-journeys-nd"></div>
+          </div>
+        </div>
+      </div>
+      <!-- Total Journeys Readout -->
+
+    </div>
+
+  </div>
+
+  <hr>
+  <p class="small text-muted">Built with &#9829; by <a href="https://keen.io">Keen IO</a></p>
+
+</div>
+
+<script src="./static/lib/js/crossfilter.js"></script>
+<script src="./static/lib/js/d3.min.js"></script>
+<script src='./static/lib/js/dc.min.js'></script>
+<script src="./static/lib/js/queue.js"></script>
+
+
+<script src="./static/lib/js/keen.min.js"></script>
+
+<script src="./static/lib/js/leaflet.js"></script>
+
+<script src="./static/lib/js/jquery.min.js"></script>
+<script src='./static/lib/js/leaflet.draw.js' type="text/javascript"></script>
+<script src='./static/lib/js/L.D3SvgOverlay.min.js'></script>
+<script src='./static/lib/js/leaflet-heat.js'></script>
+
+<script src="./static/lib/js/oboe-browser.js"></script>
+
+<script src="./static/js/devToolsCollection.js" type="text/javascript"></script>
+
+<script src="./static/js/dashboardSetup.js" type="text/javascript"></script>
+<script src="./static/js/mapSetup.js" type="text/javascript"></script>
+
+</body>
+</html>
