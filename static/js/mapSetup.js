@@ -18,7 +18,7 @@ var filterPolygons = [];
 
 var drawnItems;
 
-var concurrentJourneysVizLim = 500;
+var concurrentJourneysVizLim = 1000;
 var heatmapPointIntensity = 0.1;
 var numOfPointsForHeatmapFullIntensity = 30;
 var heatmapPointRadius = 25;
@@ -204,9 +204,9 @@ function updateDataset(doUpdate = false){
 	selectedTuids.length = 0;
  	for (var key in tripsDimCurrentSelection) {
     	selectedTuids.push(tripsDimCurrentSelection[key]['tripData']['TripID']);
-    };
-    updateHeatmapOverlay();
-    updateTripsOverlay();
+	};
+	updateHeatmapOverlay();
+	updateTripsOverlay();
 }
 
 function updateHeatmapOverlay(){
@@ -249,14 +249,16 @@ function updateTripsOverlay(){
 		}
 
 		var updateSelection = d3.select(map.getPane('overlayTrips')).select("svg").select("g").selectAll("path");
+		// updateSelection.remove();
 		var tripsDimCurrentSelectionForD3 = tripsDimCurrentSelection.filter(function(d){
 			return selectedTuids.includes(d.tripData.TripID);
 		})
-
+		shuffle(tripsDimCurrentSelectionForD3);
 		tripsDimCurrentSelectionForD3.splice(concurrentJourneysVizLim);
 
 		updateSelection = updateSelection.data(tripsDimCurrentSelectionForD3);
 
+		console.log("BOB");
 		updateSelection
 			.enter()
 				.append(function(d,i){
@@ -274,6 +276,8 @@ function updateTripsOverlay(){
 		updateSelection
 			.exit()
 				.remove();
+		
+		console.log("BOB2");
 	}
 }
 
@@ -316,9 +320,9 @@ function createLeafletPolylineFromLatLongList(latLngList, _color = 'red', _id){
 		id: _id,
 		pane: 'overlayTrips',
 	    color: _color,
-	    weight: 1,
+	    weight: 2,
 	    opacity: 0.05,
-	    smoothFactor: 2.0
+	    smoothFactor: 3.0
 	});
 	return polyline;
 }
