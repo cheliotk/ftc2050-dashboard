@@ -1,0 +1,19 @@
+{
+	"MongoDbConfiguration" : {
+        "url" : "mongodb://localhost:27017/",
+        "database" : "the database name",
+		"collectionTrips" : "the trip paths collection name",
+		"collectionWaypoints" : "the trip waypoints collection name" 
+	},
+	"ServerConfiguration" : {
+		"hostname" : "0.0.0.0",
+		"port" : 5002
+	},
+	"queryFilters" : {
+		"tripsQuery" : {
+			"projection" : {
+                "_id_":false
+            }
+		}
+	}
+}
