@@ -24,6 +24,8 @@ server.on('request', async (req, res, next) => {
 
   try {
     var q = urlLib.parse(reqUrl, true).query;
+    // console.log(q);
+    
     var dtMin = new Date(q.dt);
     dtMin = new Date(Date.UTC(dtMin.getFullYear(),dtMin.getMonth(),dtMin.getDate(),dtMin.getHours(),dtMin.getMinutes(),dtMin.getSeconds()));
     
@@ -37,6 +39,7 @@ server.on('request', async (req, res, next) => {
         var prevChunk = null;
 
         var query = {'matchings' : {"$exists" : true}, 'tripData.StartDate' : { '$gte': dtMin, '$lt': dtMax } };
+        // var query = {};
         var projections = config.queryFilters.tripsQuery.projection;
 
         var cursor = db.collection(colName).find(query).project(projections)
@@ -67,6 +70,7 @@ server.on('request', async (req, res, next) => {
 
         var pipeline = [
           {'$match': {'tripData.StartDate' : { '$gte': dtMin, '$lt': dtMax }  } }
+          // {'$match': {} }
           ,{'$project': {
             'Waypoint': { 
               '$arrayElemAt' : ["$SourceWaypoints", -1]
