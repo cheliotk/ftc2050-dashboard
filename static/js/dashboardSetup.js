@@ -1,22 +1,25 @@
-var tripsDim, dateDim, dateDimTot, endDateDim,lengthDim,odDim,stemDim;
+var tripsDim, dateDim, dateDimTot, endDateDim,lengthDim,odDim;
 var journeys;
 var journeysTripData=[];
 var journeysGeomData={};
 var tripIdGhostChart;	//not actually rendering this one anywhere, it is used for filtering trips by id
 var lengthsChart;
 var odChart;
-var stemChart;
 var tripsGroup;
 var waypoints;
 var waypointTripIdDim;
 var timeChart, endTimeChart;
 
-// var tripColors = [];
-// var deviceColors = [];
+var tripColors = [];
+var deviceColors = [];
+var tidsToDidsDict = [];
 
 var timeS, timeE;
 
 var wdx, ndx, ndxTot, allTot;
+
+var selectedInMapIdList = [];
+var selectedInMapDim, selectedInMapGroup;
 
 var savedFilters;
 
@@ -36,29 +39,7 @@ var stream;
 var advanceTimeRecurring;
 
 hideLoader();
-var showCurrentTimeRecurring = setInterval(showCurrentTime, 1000);
 setupQuery(0);
-
-function showCurrentTime(){
-	var dtNow = new Date(Date.now());
-	var dayEq = 4;
-	dayEq += dtNow.getUTCDay();
-
-	dtNow.setFullYear(2016,8,dayEq);
-
-	var options = {  
-	    weekday: 'short',
-	    year: 'numeric',
-	    month: 'short',
-	    day: '2-digit',
-	    hour: '2-digit',
-	    minute: '2-digit',
-	    second: '2-digit',
-	    hour12: false
-	};
-
-	document.getElementById("currentTimeElement").textContent = dtNow.toLocaleString('default', options);
-}
 
 function setupQuery(_dataset = 0){
 	isDone = false;
@@ -70,10 +51,12 @@ function setupQuery(_dataset = 0){
 	startQuery();
 }
 
-function startQuery(){
+function startQuery(){	
+	// console.time("strartQuery");
 	showLoader();
 
 	journeysReceivedSinceStartOfQuery = 0;
+
 	var waypointsQuery = '/dashboardLive/api/getStopsByDate/?dt=' + timeS + '&dtEnd='+timeE;
 
 	queue()
@@ -82,6 +65,7 @@ function startQuery(){
 }
 
 function startQueryStream(error, waypointsJson){
+	// console.log("startQueryStream");
 	if(error){
 		console.log('Error: ', error);
 	}
@@ -90,6 +74,7 @@ function startQueryStream(error, waypointsJson){
 
 	var journeysQuery = '/dashboardLive/api/getJourneysByDate/?dt=' + timeS + '&dtEnd='+timeE;
 	waypointsJsonHolder = JSON.parse(JSON.stringify(waypointsJson));
+	// console.log(journeysQuery);
 
 	stream = oboe(journeysQuery);
 	stream
@@ -117,6 +102,7 @@ function hideLoader()
 }
 
 function finishedStreamingData(){
+	// console.log("finishedStreamingData");
 	isDone = true;
 	if(journeysReceivedSinceStartOfDailyQuery != 0){
 		appendData(journeysLoadCollector, waypointsJsonHolder);
@@ -127,6 +113,7 @@ function finishedStreamingData(){
 }
 
 function addJourneyToCollector(jrn){
+	// console.log("addJourneyToCollector");
 	journeysLoadCollector.push(jrn);
 	journeysReceivedSinceStartOfDailyQuery += 1;
 	journeysReceivedSinceStartOfQuery += 1;
@@ -134,15 +121,16 @@ function addJourneyToCollector(jrn){
 };
 
 function checkCollectorSize(){
+	// console.log("checkCollectorSize");
 	if(hasStarted){
-		if(journeysLoadCollector.length > 50 && !isCurrentlyAdding){
+		if(journeysLoadCollector.length > 10 && !isCurrentlyAdding){
 			appendData(journeysLoadCollector, waypointsJsonHolder);
 			journeysLoadCollector.length = 0;
 		}
 	}
 	else{
 		if(!isSettingUp){
-			if(journeysLoadCollector.length > 50){
+			if(journeysLoadCollector.length > 25){
 				setupChartAreas(journeysLoadCollector, waypointsJsonHolder);
 				journeysLoadCollector.length = 0;
 			}
@@ -154,27 +142,31 @@ function setupChartAreas(journeysJson, waypointsJson){
 	isCurrentlyAdding = true;
 	isSettingUp = true;
 
-	// tripColors = [];
-	// deviceColors = [];
+	tripColors = [];
+	deviceColors = [];
+	tidsToDidsDict = [];
 	journeysTripData.length = 0;
 	for (var prop in journeysGeomData) { if (journeysGeomData.hasOwnProperty(prop)) { delete journeysGeomData[prop]; } }
 
 	journeys = JSON.parse(JSON.stringify(journeysJson));
 	waypoints = JSON.parse(JSON.stringify(waypointsJson));
 
+	var counter = 0;
 	journeys.forEach(function(datum) {
 		var d = prepAndLoadTrip(datum);
 
 		journeysTripData.push({'_id' : d._id.toString(), 'tripData' : d.tripData});
 		journeysGeomData[d._id] = { '_id' : d._id.toString(), 'matchings' : d.matchings };
 
-		// tripColors[d.tripData.TripID.toString()] = randomColorHex();
-		// deviceColors[d.tripData.DeviceID.toString()] = randomColorHex();
+		tripColors[d.tripData.TripID.toString()] = randomColorHex();
+		deviceColors[d.tripData.DeviceID.toString()] = randomColorHex();
+
+		counter++;
 	});
 
 	waypoints.forEach(function(dd){
 		dd.SourceWaypoints = dd.Waypoint;
-		// tripColors[dd.SourceWaypoints.TripID.toString()] = randomColorHex();
+		tripColors[dd.SourceWaypoints.TripID.toString()] = randomColorHex();
 	});
 
 	wdx = crossfilter(waypoints);
@@ -183,13 +175,15 @@ function setupChartAreas(journeysJson, waypointsJson){
 	ndxTot = crossfilter(journeysTripData);
 
 	// setting dims
-	dateDim = ndx.dimension(function(d) { return d['tripData']["StartDateQuartHour"]; });
-	dateDimTot = ndxTot.dimension(function(d) { return d['tripData']["StartDateQuartHour"]; });
-	endDateDim = ndx.dimension(function(d) { return d['tripData']["EndDateQuartHour"]; });
+	
+	dateDim = ndx.dimension(function(d) { return d['tripData']["StartHour"]; });
+	dateDimTot = ndxTot.dimension(function(d) { return d['tripData']["StartHour"]; });
+	endDateDim = ndx.dimension(function(d) { return d['tripData']["EndHour"]; });
+
 	lengthDim = ndx.dimension(function(d){ return d['tripData']['distance'] });
 	odDim = ndx.dimension(function(d){ return d.tripData.Geospacial; } );
 	tripsDim = ndx.dimension(function(d) { return d['tripData']['TripID']; } );
-	stemDim = ndx.dimension(function(d) { return d['tripData']['stemStatus']; });
+	selectedInMapDim = ndx.dimension(function(d){ return d['tripData']['selectedInMap']; });
 
 	var startingTuids = [];
 	tripsDim.top(Infinity).forEach( function(d){
@@ -201,11 +195,11 @@ function setupChartAreas(journeysJson, waypointsJson){
 	//setting groups
 	var dateGroup = dateDim.group();
 	var endDateGroup = endDateDim.group();
-	var lengthGroupTemp = lengthDim.group();
-	var lengthGroup = remove_empty_bins(lengthGroupTemp);
+	var lengthGroup = lengthDim.group();
 	var odGroup = odDim.group();
 	tripsGroup = tripsDim.group();
-	var stemGroup = stemDim.group();
+
+	selectedInMapGroup = selectedInMapDim.group();
 
 	var all = ndx.groupAll();
 	allTot = ndxTot.groupAll();
@@ -225,7 +219,6 @@ function setupChartAreas(journeysJson, waypointsJson){
 	//initializing charts and hooking up to html elements
 	odChart = dc.barChart('#od-row-chart');
 	lengthsChart = dc.barChart("#resource-type-row-chart");
-	stemChart = dc.barChart('#stem-row-chart');
 	tripIdGhostChart = dc.rowChart("#non");
 	var filterJourneysND = dc.numberDisplay("#filtered-journeys-nd");
 	var totalJourneysND = dc.numberDisplay('#total-journeys-nd');
@@ -256,13 +249,10 @@ function setupChartAreas(journeysJson, waypointsJson){
 		.group(dateGroup)
 		.transitionDelay(0)
 		.transitionDuration(0)
-		.x(d3.time.scale.utc().domain([minDate, maxDate]))
+		.x(d3.scale.linear().domain([0,24]))
 		.elasticY(true)
-		.yAxis().ticks(4);
-
-	timeChart
-		.xAxis()
-		.tickFormat(formatHourTick);	
+		.yAxis().ticks(4)
+		;
 
 	endTimeChart = dc.barChart("#time-chart-end");
 	endTimeChart
@@ -274,13 +264,10 @@ function setupChartAreas(journeysJson, waypointsJson){
 		.group(endDateGroup)
 		.transitionDelay(0)
 		.transitionDuration(0)
-		.x(d3.time.scale.utc().domain([minDate, maxDate]))
+		.x(d3.scale.linear().domain([0,24]))
 		.elasticY(true)
-		.yAxis().ticks(4);
-
-		endTimeChart
-			.xAxis()
-			.tickFormat(formatHourTick);
+		.yAxis().ticks(4)
+		;
 
 	odChart
 		.width(chartWidth)
@@ -296,29 +283,15 @@ function setupChartAreas(journeysJson, waypointsJson){
 
 	lengthsChart
         .width(chartWidth)
-		.height(150)
+        .height(150)
         .transitionDelay(0)
 		.transitionDuration(0)
         .dimension(lengthDim)
         .group(lengthGroup)
-		.x(d3.scale.linear())
+		.x(d3.scale.linear().domain([minLength, 150]))
 		.elasticY(true)
-		.elasticX(true)
 		.xAxisLabel("Length (km)")
 		.yAxis().ticks(4);
-
-	stemChart
-		.width(chartWidth)
-		.height(150)
-		.transitionDelay(0)
-		.transitionDuration(0)
-		.margins({top: 10, right: 25, bottom: 20, left: 40})
-		.x(d3.scale.ordinal().domain(['stem', 'non-stem']))
-		.xUnits(dc.units.ordinal)
-		.elasticY(true)
-		// .y(d3.scale.log().domain([.5, 100000]))
-        .dimension(stemDim)
-        .group(stemGroup);
 
 	tripIdGhostChart
 		.width(null)
@@ -330,9 +303,7 @@ function setupChartAreas(journeysJson, waypointsJson){
         .xAxis().ticks(4);
 
     //all done, hook it up to the mapping functions and start
-	dc.renderAll();
-	
-	redrawChartsFunction();
+    dc.renderAll();
 
     hasStarted = true;
     isSettingUp = false;
@@ -342,10 +313,13 @@ function setupChartAreas(journeysJson, waypointsJson){
 };
 
 function appendData(journeysJson, waypointsJson){
+	// console.log("appendData");
 	isCurrentlyAdding = true;
 	journeys = JSON.parse(JSON.stringify(journeysJson));
 
 	var jtd = [];
+	var jgd = {};
+	var counter = 0;
 
 	journeys.forEach(function(datum) {
 		var d = prepAndLoadTrip(datum);
@@ -355,8 +329,10 @@ function appendData(journeysJson, waypointsJson){
 		journeysTripData.push({'_id' : d._id.toString(), 'tripData' : d.tripData});
 		journeysGeomData[d._id] = { '_id' : d._id.toString(), 'matchings' : d.matchings };
 
-		// tripColors[d.tripData.TripID.toString()] = randomColorHex();
-		// deviceColors[d.tripData.DeviceID.toString()] = randomColorHex();
+		tripColors[d.tripData.TripID.toString()] = randomColorHex();
+		deviceColors[d.tripData.DeviceID.toString()] = randomColorHex();
+
+		counter++;
 	});
 
 	if(!(Object.keys(waypointsJson).length === 0)){
@@ -365,10 +341,10 @@ function appendData(journeysJson, waypointsJson){
 		waypoints.forEach(function(dd){
 			dd.SourceWaypoints = dd.Waypoint;
 
-			// tripColors[dd.SourceWaypoints.TripID.toString()] = randomColorHex();
-			// if(dd.SourceWaypoints.DeviceID){
-			// 	deviceColors[dd.SourceWaypoints.DeviceID.toString()] = randomColorHex();
-			// }
+			tripColors[dd.SourceWaypoints.TripID.toString()] = randomColorHex();
+			if(dd.SourceWaypoints.DeviceID){
+				deviceColors[dd.SourceWaypoints.DeviceID.toString()] = randomColorHex();
+			}
 			
 		});
 
@@ -379,24 +355,11 @@ function appendData(journeysJson, waypointsJson){
 
 	ndx.add(jtd);
 	ndxTot.add(jtd);
-	// all = ndx.groupAll();
 	allTot = ndxTot.groupAll();
-
-	//setting minmax values for numeric groups
-	var dtMax = new Date(timeE).reSetDateType();
-	var dtOffset = new Date();
-	dtMax.setMinutes(dtMax.getMinutes() - dtOffset.getTimezoneOffset());
-    var dtMin = dtMax.addHours(-timeWindowInHours);
-
-    var minDate = dtMin;
-    var maxDate = dtMax;
-
-    timeChart.x(d3.time.scale.utc().domain([minDate, maxDate]));
-    endTimeChart.x(d3.time.scale.utc().domain([minDate, maxDate]));
 
     journeysJson = waypointsJson = journeys = waypoints = {};
 
-    //all done, hook it up to the mapping functions and start
+ //    //all done, hook it up to the mapping functions and start
     dc.renderAll();
     if(isDone){
     	mapSetup(tripsDim.top(Infinity));
@@ -406,13 +369,10 @@ function appendData(journeysJson, waypointsJson){
 	    });
 
 	    restoreFilters();
-		restoreFilters();
+	    restoreFilters();
+	    filterTripId(selectedInMapIdList);
 
 	    dc.redrawAll();
-
-	    if(!advanceTimeRecurring){
-	    	advanceTimeRecurring = setInterval(advanceTime, 60000);
-		}
     }
 
     isCurrentlyAdding = false;
@@ -421,26 +381,13 @@ function appendData(journeysJson, waypointsJson){
 function prepAndLoadTrip(d){
 	journeyIdsLoadedThisUpdate.push(d['tripData']['TripID'].toString());
 
-	var dateFormat = d3.time.format.utc("%Y-%m-%dT%H:%M:%S.%LZ");
+	var dateFormat = d3.time.format("%Y-%m-%dT%H:%M:%S.%LZ");
 
 	d['tripData']["StartDate"] = dateFormat.parse(d['tripData']["StartDate"]);
-	d['tripData']['StartDateQuartHour'] = d['tripData']["StartDate"];
-
-	var quartHr = Math.floor(d['tripData']['StartDate'].getMinutes()/5) * 5;
-	d['tripData']['StartDateQuartHour'].setMinutes(quartHr,0);
-	d['tripData']['StartDateQuartHour'] = d['tripData']['StartDateQuartHour'].reSetDateType();
-
+	d['tripData']['StartHour'] = d['tripData']['StartDate'].getHours();
 
 	d['tripData']["EndDate"] = dateFormat.parse(d['tripData']["EndDate"]);
-	d['tripData']['EndDateQuartHour'] = d['tripData']["EndDate"];
-
-	quartHr = Math.floor(d['tripData']['EndDate'].getMinutes()/5) * 5;
-	d['tripData']['EndDateQuartHour'].setMinutes(quartHr,0);
-	d['tripData']['EndDateQuartHour'] = d['tripData']['EndDateQuartHour'].reSetDateType();
-
-	var isStem = (d['tripData']['IsStartHome'] || d['tripData']['IsEndHome']);
-	// d['tripData']['stemStatus'] = isStem ? (d['tripData']['IsStartHome'] ? 'start-stem' : 'end-stem') : 'non-stem';
-	d['tripData']['stemStatus'] = isStem ? 'stem' : 'non-stem';
+	d['tripData']['EndHour'] = d['tripData']['EndDate'].getHours();
 
 	var sumDist = 0;
 
@@ -454,15 +401,53 @@ function prepAndLoadTrip(d){
 		d.tripData.Geospacial = 'EE';
 	}
 
+	d['tripData']['selectedInMap'] = 0;
+
 	return d;
 }
 
 // function for filtering items on the map
 // called from the map script
 function filterTripId(selectedIds){
+	selectedInMapIdList = [...selectedIds];
 	tripIdGhostChart.replaceFilter([selectedIds]);
 	dc.redrawAll();
 }
+
+function randomColorHex(){
+	return hslToHex(Math.random() * (300 - 60) + 60, 50, 50);
+	// return '#'+Math.floor(Math.random()*16777215).toString(16);
+}
+
+function hslToHex(h, s, l) {
+  h /= 360;
+  s /= 100;
+  l /= 100;
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l; // achromatic
+  } else {
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1 / 3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1 / 3);
+  }
+  const toHex = x => {
+    const hex = Math.round(x * 255).toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  };
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
 
 d3.select(window).on('resize.updatedc', function() {
   dc.events.trigger( function() {
@@ -482,6 +467,7 @@ d3.select(window).on('resize.updatedc', function() {
 });
 
 function redrawChartsFunction() {
+	// console.time("redrawChartsFunction");
     dc.chartRegistry.list().forEach(function(chart) {
         var container = chart.root().node();
         if (!container){
@@ -492,6 +478,7 @@ function redrawChartsFunction() {
         chart.rescale && chart.rescale(); // some graphs don't have a rescale
     });
 
+    // console.timeEnd("redrawChartsFunction");
 	dc.redrawAll();
   }
 
@@ -511,20 +498,28 @@ const unique = (value, index, self) => {
 }
 
 function updateQueryTimes(){
+	// console.time("updateQueryTimes");
+	
+	// timeNow = new Date(Date.now());
+
 	timeNow = timeNow.addMinutes(5);
 
 	var dayEq = 4;
 	dayEq += timeNow.getUTCDay();
 
-	timeNow.setFullYear(2016,8,dayEq);
+	timeNow.setFullYear(2016,8,5);
+
+	timeNow = new Date('September 2, 2016, 00:00:00');
 	timeE = timeNow.toISOString();
 
 	timeNow_1 = new Date(timeNow);
 	timeNow_1 = timeNow_1.addHours(-timeWindowInHours);
 	timeS = timeNow_1.toISOString();
+	// console.timeEnd("updateQueryTimes");
 }
 
 function saveFilters(){
+	// console.time("saveFilters");
 	var filters = [];
     for (var i = 0; i < dc.chartRegistry.list().length; i++)
     {
@@ -537,20 +532,27 @@ function saveFilters(){
         }
     }
     savedFilters = filters;
+
+    // console.timeEnd("saveFilters");
 }
 
 function restoreFilters(){
+	// console.time("restoreFilters");
 	if(savedFilters){
 		for (var i = 0; i< savedFilters.length; i++)
 	    {
+	    	// console.log(i, savedFilters[i]);
 	        dc.chartRegistry.list()[savedFilters[i].ChartID-1].filter(savedFilters[i].Filter);
 	    }
 	}
+
+	// console.timeEnd("restoreFilters");
     redrawChartsFunction();
 }
 
 function advanceTime(){
 	if(hasStarted){
+		// console.time("advanceTime");
 		saveFilters();
 
 		tripsDim.filterAll();
@@ -561,6 +563,7 @@ function advanceTime(){
 		endDateDim.filterAll();
 
 		tripsDim.filterAll();
+		// tripIdGhostChart.replaceFilter([]);
 
 	    var timeMax = new Date(timeNow);
 	    var timeMin = new Date(timeNow_1);
@@ -574,11 +577,13 @@ function advanceTime(){
 		removeOldTrips(timeMin, timeNow_1);
 
 		timeS = timeMax.toISOString();
+		// console.timeEnd("advanceTime");
 		startQuery();
 	}
 }
 
 function removeOldTrips(timeMin, timeMax){
+	// console.time("removeOldTrips");
 	var timeMinForTripRemoval = new Date(Date.UTC(timeMin.getFullYear(),timeMin.getMonth(),timeMin.getDate(),timeMin.getHours(),timeMin.getMinutes(),timeMin.getSeconds()));
 	var timeMaxForTripRemoval = new Date(Date.UTC(timeMax.getFullYear(),timeMax.getMonth(),timeMax.getDate(),timeMax.getHours(),timeMax.getMinutes(),timeMax.getSeconds()));
 
@@ -587,20 +592,6 @@ function removeOldTrips(timeMin, timeMax){
 	dateDim.filter([timeMinForTripRemoval, timeMaxForTripRemoval]);
 	dateDimTot.filter([timeMinForTripRemoval, timeMaxForTripRemoval]);
 
-	for (let i = 0; i < dateDim.top(Infinity).length; i++) {
-		const d = dateDim.top(Infinity)[i];
-		var _id = d['_id'];
-
-		removeFromNodesVisitedDict(d.tripData.TripID);
-		delete journeysGeomData[_id];
-		for (let j = 0; j < journeysTripData.length; j++) {
-			if(journeysTripData[j] === d){
-				journeysTripData.splice(j,1);
-				break;
-			}
-		}
-	}
-	
 	ndx.remove();
 	ndxTot.remove();
 	dateDimTot.filterAll();

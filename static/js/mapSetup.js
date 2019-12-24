@@ -18,9 +18,9 @@ var filterPolygons = [];
 
 var drawnItems;
 
-var concurrentJourneysVizLim = 1000;
+var concurrentJourneysVizLim = 500;
 var heatmapPointIntensity = 0.1;
-var numOfPointsForHeatmapFullIntensity = 30;
+var numOfPointsForHeatmapFullIntensity = 10;
 var heatmapPointRadius = 25;
 
 var geoJsonPath;
@@ -35,8 +35,6 @@ $.getJSON('static/geojson/nodes.json', function(data){
 
 function mapSetup(initialSet){
 
-	addToNodesVisitedDict(initialSet);
-
 	//leaflet map setup
 	var CartoDB_DarkMatterNoLabels = L.tileLayer('https://cartodb-basemaps-{s}.global.ssl.fastly.net/dark_nolabels/{z}/{x}/{y}.png', {
 		attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="http://cartodb.com/attributions">CartoDB</a>',
@@ -50,16 +48,11 @@ function mapSetup(initialSet){
 		map = L.map('mapid').setView([51.515, -0.09], 14)
 			.addLayer(CartoDB_DarkMatterNoLabels);
 
-		//pane containing the area of interest's boundary
 		map.createPane('boundary');
 		map.getPane('boundary').style.zIndex = 404;
 		map.getPane('boundary').style.pointerEvents = 'none';
 
-		//pane that will hold the trip geometries
-		map.createPane('overlayTrips');
-		map.getPane('overlayTrips').style.zIndex = 406;
-
-		//setting up the drawing interface, for drawing custom buffer and filter zones
+		//setting up the drawing interface, for drawing custom buffer adn filter zones
 		map.createPane('drawing');
 		map.getPane('drawing').style.zIndex = 405;
 
@@ -76,16 +69,14 @@ function mapSetup(initialSet){
 	                allowIntersection: false, // Restricts shapes to simple polygons
 	                drawError: {
 	                    color: '#e1e100', // Color the shape will turn when intersects
-	                    message: '<strong>Polygon cannot intersect itself' // Message that will show when intersect
+	                    message: '<strong>Oh snap!<strong> you can\'t draw that!' // Message that will show when intersect
 	                },
 	                shapeOptions: {
-						pane: 'drawing',
 	                    color: '#bada55'
 	                }
 	            },
 	            rectangle:{
 	            	shapeOptions: {
-						pane: 'drawing',
 	                    color: '#bada55'
 	                }
 	            },
@@ -123,9 +114,12 @@ function mapSetup(initialSet){
 	    	filterPolygons.push(filterPolygon);
 	    	drawnItems.addLayer(layer);
 
-			selectedOsmNodes = getOsmNodesInArea(filterPolygons);
+	    	selectedOsmNodes = getOsmNodesInArea(filterPolygons);
 	    	selectedTuidsFromMap = getTuidsPassingFromNodes(selectedOsmNodes);
+	    	// console.log(selectedTuidsFromMap);
 	    	filterTripId(selectedTuidsFromMap);
+	    
+
 	    });
 
 	     map.on(L.Draw.Event.DELETED, function (e) {
@@ -153,7 +147,7 @@ function mapSetup(initialSet){
 	     		updateHeatmapOverlay();
 	     	}
 	     	else if(event.name == 'Paths'){
-	     		updateTripsOverlay();
+	     		updateSvgOverlayNoJQ(svgPaths.selection, svgPaths.projection);
 	     	}
 	     });
 
@@ -170,11 +164,13 @@ function mapSetup(initialSet){
 	 	});
 
 	    pathsLayer = L.layerGroup().addTo(map);
+
 	    heatLayer = L.layerGroup().addTo(map);
 	    heatSurface = L.heatLayer([]).addTo(heatLayer);
 	    heatSurface.setOptions({maxZoom:1, max:1, radius: heatmapPointRadius, blur:15, alpha:1, gradient:{1: 'red', 0.7: 'orange', 0.4: 'yellow', 0.1: 'white'}});
 
-		updateTripsOverlay();
+	    svgPaths = L.d3SvgOverlay(updateSvgOverlayNoJQ, {zoomHide: false, zoomDraw: false}).addTo(pathsLayer);
+
 	    updateHeatmapOverlay();
 
 	 	var baseMaps = {
@@ -195,18 +191,20 @@ function mapSetup(initialSet){
 
 function updateDataset(doUpdate = false){
 
-	if(!doUpdate && tripsDim.top(Infinity).length > concurrentJourneysVizLim){
+	if(!doUpdate && tripsDim.top(Infinity).length > 1000){
 		return;
 	}
+
+	// console.trace();
 
 	tripsDimCurrentSelection = tripsDim.top(Infinity);
 
 	selectedTuids.length = 0;
  	for (var key in tripsDimCurrentSelection) {
     	selectedTuids.push(tripsDimCurrentSelection[key]['tripData']['TripID']);
-	};
-	updateHeatmapOverlay();
-	updateTripsOverlay();
+    };
+    updateSvgOverlayNoJQ(svgPaths.selection, svgPaths.projection);
+    updateHeatmapOverlay();
 }
 
 function updateHeatmapOverlay(){
@@ -226,63 +224,58 @@ function updateHeatmapOverlay(){
 	}
 }
 
-function updateTripsOverlay(){
+function updateSvgOverlayNoJQ(selection, projection){
 	if(pathsLayer._map){
 		var tripsDimCurrentSelection = tripsDim.top(Infinity);
 		selectedTuids.length = 0;
 	 	for (var key in tripsDimCurrentSelection) {
 	    	selectedTuids.push(tripsDimCurrentSelection[key]['tripData']['TripID']);
-		};
+	    };
 
-		if(tripsDimCurrentSelection.length != 0){
-			var firstSelectedTid = selectedTuids[0];
-			var d;
-			for (let i = 0; i < journeysTripData.length; i++) {
-				if(journeysTripData[i].tripData.TripID == firstSelectedTid){
-					d = journeysTripData[i];
-					break;
+	    var updateSelection = selection.selectAll('path')
+			.data(tripsDimCurrentSelection, function(d) {if(selectedTuids.includes(d.tripData.TripID)) {return d.tripData.TripID;} else {return null;} });
+
+	    updateSelection
+	    .attr('stroke-width', 1.5 / projection.scale)
+	    .each(function(d,i){
+	    	if(i < concurrentJourneysVizLim){
+	    		var datum = d3.select(this);
+				datum.attr('d', function(d){return createPathFromGeoJSON(d._id, projection)});
+				datum.attr('stroke', 'cyan');
+				datum.attr('stroke-width', 1.5 / projection.scale);
+				datum.attr('fill','none');
+				datum.attr('stroke-opacity', 0.1);
+	    	}
+	    })
+	    .enter()
+			.append('path')
+			.attr('id', function(d){return '_' + d.tripData.TripID;})
+			.each(function(d,i){
+				if(!(d.tripData.TripID in nodesVisitedByTrip)){
+			    	var nv = getVisitedNodesFromJSON(d);
+					var keys = Object.keys(nodesVisitedByTrip);
+					nodesVisitedByTrip[d.tripData.TripID] = nv;
 				}
-			}
-			var latLngList = createLatLongListFromGeoJSON(d._id);
-			var polyline = createLeafletPolylineFromLatLongList(latLngList, 'cyan', d.tripData.TripID);
-			polyline.addTo(pathsLayer);
-		}
 
-		var updateSelection = d3.select(map.getPane('overlayTrips')).select("svg").select("g").selectAll("path");
-		// updateSelection.remove();
-		var tripsDimCurrentSelectionForD3 = tripsDimCurrentSelection.filter(function(d){
-			return selectedTuids.includes(d.tripData.TripID);
-		})
-		shuffle(tripsDimCurrentSelectionForD3);
-		tripsDimCurrentSelectionForD3.splice(concurrentJourneysVizLim);
+				var datum = d3.select(this);
+				datum.attr('stroke', 'cyan');
+				datum.attr('stroke-width', 1.5 / projection.scale);
+				datum.attr('fill','none');
+				datum.attr('fill','none');        			
+				datum.attr('stroke-opacity', 0.1);
 
-		updateSelection = updateSelection.data(tripsDimCurrentSelectionForD3);
-
-		console.log("BOB");
-		updateSelection
-			.enter()
-				.append(function(d,i){
-					if(i <= concurrentJourneysVizLim) {
-						var latLngList = createLatLongListFromGeoJSON(d._id);
-					}
-					else{
-						var latLngList = [];
-					}
-					var polyline = createLeafletPolylineFromLatLongList(latLngList, 'cyan', d.tripData.TripID);
-					polyline.addTo(pathsLayer);
-					return L.DomUtil.get(polyline._path);
-				});
+				if(i < concurrentJourneysVizLim){
+					datum.attr('d', function(d){return createPathFromGeoJSON(d._id, projection)});
+				}
+			});
 
 		updateSelection
 			.exit()
-				.remove();
-		
-		console.log("BOB2");
+			.remove();
 	}
 }
 
 function calcPixelSizeInMeters(){
-	// from StackOverflow answer: https://stackoverflow.com/a/27546312
 	var centerLatLng = map.getCenter(); // get map center
 	var pointC = map.latLngToContainerPoint(centerLatLng); // convert to containerpoint (pixels)
 	var pointX = [pointC.x + 1, pointC.y]; // add one pixel to x
@@ -299,8 +292,22 @@ function calcPixelSizeInMeters(){
 	return distanceX;
 }
 
+function createPathFromGeoJSON(geojsonId, svgPathsProj){
+	var geojson = journeysGeomData[geojsonId].matchings;
+	var pathString = '';
+	for (var i = 0; i < geojson.length; i++) {
+		var gjson = geojson[i].geometry;
+		var pathSubstring = svgPathsProj.pathFromGeojson(gjson);
+		if(pathSubstring != undefined){
+			pathString += pathSubstring;
+		}
+	};
+	return pathString;
+}
+
 function createLatLongListFromGeoJSON(geojsonId){
 	var geojson = journeysGeomData[geojsonId].matchings;
+	// var pathString = '';
 
 	var latLngList = [];
 	for (var i = 0; i < geojson.length; i++) {
@@ -313,16 +320,14 @@ function createLatLongListFromGeoJSON(geojsonId){
 	return latLngList;
 }
 
-function createLeafletPolylineFromLatLongList(latLngList, _color = 'red', _id){
+function createLeafletPolylineFromLatLongList(latLngList, color = 'red'){
 	var pointList = latLngList;
 
 	var polyline = new L.polyline(pointList, {
-		id: _id,
-		pane: 'overlayTrips',
-	    color: _color,
-	    weight: 2,
-	    opacity: 0.05,
-	    smoothFactor: 3.0
+	    color: color,
+	    weight: 1,
+	    opacity: 0.1,
+	    smoothFactor: 1
 	});
 	return polyline;
 }
@@ -332,6 +337,7 @@ function getVisitedNodesFromJSON(tJson){
 		var outList = [];
 		var matchings = journeysGeomData[tJson._id].matchings;
 		matchings.forEach(function(d){
+			// var tripLegs = tJson.matchings[0].legs;
 			var tripLegs = d.legs;
 			var tempList = [];
 			for(var i = 0; i < tripLegs.length; i ++){
@@ -341,7 +347,9 @@ function getVisitedNodesFromJSON(tJson){
 			newList = newList.map(function(x){
 				return x.toString();
 			});
+			// newList = newList.filter(unique);
 			outList.push.apply(outList, newList);
+			// return newList;
 		});
 		return outList;
 	}
@@ -365,13 +373,35 @@ function getOsmNodesInArea(vsTop){
 	return newList;
 }
 
-function getTuidsPassingFromNodes(filteredNodesList){
+function getTuidsPassingFromNodes(filteredNodesList, newTuids = []){
+	var nodesVisitedByTripNew = [];
+
+	if(newTuids.length != 0){
+
+		for (var t = 0; t < newTuids.length; t++) {
+			if(!(newTuids[t] in nodesVisitedByTrip)){
+
+				var d = journeysTripData.filter(function(journey){
+					return journey.tripData.TripID == newTuids[t];
+				});
+
+		    	var nv = getVisitedNodesFromJSON(d[0]);
+				nodesVisitedByTrip[newTuids[t]] = nv;
+			}
+
+			nodesVisitedByTripNew[newTuids[t]] = nodesVisitedByTrip[newTuids[t]];
+		};
+	}
+	else{
+		nodesVisitedByTripNew = nodesVisitedByTrip;
+	}
+
 	var newList = [];
 
 	for (var i = filteredNodesList.length - 1; i >= 0; i--) {
 		var tuidsTemp2 = [];
-		for (var key in nodesVisitedByTrip){
-			if(nodesVisitedByTrip[key].includes(filteredNodesList[i])){
+		for (var key in nodesVisitedByTripNew){
+			if(nodesVisitedByTripNew[key].includes(filteredNodesList[i])){
 				tuidsTemp2.push(key);
 			}
 		}
@@ -381,33 +411,6 @@ function getTuidsPassingFromNodes(filteredNodesList){
 	newList = newList.filter(unique);
 	newList = newList.filter(Boolean);
 	return newList;
-}
-
-function addToNodesVisitedDict(tripsList){
-	tripsList.forEach(function(d){
-		if(!(d.tripData.TripID in nodesVisitedByTrip)){
-			var nv = getVisitedNodesFromJSON(d);
-			nodesVisitedByTrip[d.tripData.TripID.toString()] = nv;
-		}
-	})
-}
-
-function removeFromNodesVisitedDict(input){
-	if(typeof input === "string"){
-		removeTrip(input);
-	}
-	else{
-		for (let i = 0; i < input.length; i++) {
-			const tid = input[i];
-			removeTrip(tid);
-		}
-	}
-
-	function removeTrip(tid){
-		if(tid in nodesVisitedByTrip){
-			delete nodesVisitedByTrip[tid];
-		}
-	}
 }
 
 function setLegend(){
