@@ -1,4 +1,4 @@
-![Logo of the project](https://raw.githubusercontent.com/jehna/readme-best-practices/master/sample-logo.png)
+<!-- ![Logo of the project](http://www.path/to/logo.png) -->
 
 # FTC2050 Freight Dashboard
 
