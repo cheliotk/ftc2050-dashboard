@@ -33,8 +33,8 @@ Copy the `config-example.json` file and rename to `config.json`. Fill in the fie
         // filters and projection for the mongodb query
 		"tripsQuery" : {
 			"projection" : {
-                "_id_":false
-            }
+                		"_id_":false
+            		}
 		}
 	}
 }
