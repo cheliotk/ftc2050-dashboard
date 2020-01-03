@@ -20,7 +20,7 @@ Copy the `config-example.json` file and rename to `config.json`. Fill in the fie
 	"MongoDbConfiguration" : {
         // inormation about the MongoDb setup 
 		"url" : "mongodb://localhost:27017/",
-        "database" : "the database name",
+        	"database" : "the database name",
 		"collectionTrips" : "the trip paths collection name",
 		"collectionWaypoints" : "the trip waypoints collection name" 
 	},
